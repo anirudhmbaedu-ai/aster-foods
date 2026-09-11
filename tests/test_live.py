@@ -128,6 +128,7 @@ def test_api_missing_key_and_mutation_guard(monkeypatch):
     from fastapi.testclient import TestClient
     from aster_live import server
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     client = TestClient(server.app)
     assert client.get("/").status_code == 200
     cfg = client.get("/api/config").json()

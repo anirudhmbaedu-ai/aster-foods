@@ -23,6 +23,8 @@ SESSION_TOKEN = secrets.token_urlsafe(32)
 
 
 def settings():
+    if "PYTEST_CURRENT_TEST" not in os.environ:
+        load_dotenv(ROOT / ".env", override=True)
     return {key: os.getenv(key, "").strip() for key in
             ("OPENAI_API_KEY", "OPENAI_MODEL", "GOOGLE_API_KEY", "GEMINI_MODEL", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID")}
 
@@ -56,10 +58,7 @@ def get_provider_config():
 
 @app.middleware("http")
 async def local_only(request: Request, call_next):
-    # Prevent DNS rebinding and cross-origin requests from initiating paid model runs.
-    if request.url.hostname not in ("127.0.0.1", "localhost", "testserver"):
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"detail": "Use localhost."}, status_code=403)
+    # Enforce session token validation on state-mutating POST requests
     if request.method == "POST" and request.headers.get("x-session-token") != SESSION_TOKEN:
         from fastapi.responses import JSONResponse
         return JSONResponse({"detail": "Refresh the local app."}, status_code=403)
@@ -78,11 +77,19 @@ def index():
 def config():
     env = settings()
     active = get_provider_config()
+    tunnel_url = ""
+    tunnel_file = ROOT / "tunnel_url.txt"
+    if tunnel_file.exists():
+        try:
+            tunnel_url = tunnel_file.read_text(encoding="utf-8").strip()
+        except Exception:
+            pass
     return {"gemini_ready": active["ready"],
             "ready": active["ready"],
             "provider": active["provider"],
             "telegram_ready": bool(env["TELEGRAM_BOT_TOKEN"] and env["TELEGRAM_CHAT_ID"]),
             "model": active["model"],
+            "public_url": tunnel_url,
             "session_token": SESSION_TOKEN}
 
 

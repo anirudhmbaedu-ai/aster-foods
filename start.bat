@@ -51,9 +51,14 @@ if %ERRORLEVEL% neq 0 (
 )
 
 :: 4. Launch the application and open browser
+findstr /C:"TELEGRAM_BOT_TOKEN=" .env >nul 2>&1
+if %ERRORLEVEL% equ 0 (
+    echo Starting Telegram Bot daemon in background...
+    start /b "" "%PY_CMD%" telegram_bot.py
+)
 echo Starting Aster Foods server on http://127.0.0.1:8766 ...
 start "" "http://127.0.0.1:8766"
-"%PY_CMD%" -m uvicorn aster_live.server:app --host 127.0.0.1 --port 8766 --no-access-log
+"%PY_CMD%" -m uvicorn aster_live.server:app --host 0.0.0.0 --port 8766 --no-access-log
 
 if %ERRORLEVEL% neq 0 (
     echo.

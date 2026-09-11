@@ -33,5 +33,26 @@ if ! "$PY_CMD" -c "import fastapi, uvicorn" >/dev/null 2>&1; then
   fi
 fi
 
-# 4. Launch the application
-exec "$PY_CMD" -m uvicorn aster_live.server:app --host 127.0.0.1 --port 8766 --no-access-log
+# 4. Launch Telegram bot daemon and Public Tunnel
+PIDS=""
+cleanup() {
+  echo "\nShutting down services..."
+  for pid in $PIDS; do
+    kill "$pid" 2>/dev/null || true
+  done
+}
+trap cleanup EXIT INT TERM
+
+if grep -q "TELEGRAM_BOT_TOKEN=.." .env 2>/dev/null; then
+  echo "Starting Telegram Bot daemon in background..."
+  "$PY_CMD" telegram_bot.py &
+  PIDS="$PIDS $!"
+fi
+
+echo "Starting Public Tunnel in background..."
+"$PY_CMD" tunnel_runner.py &
+PIDS="$PIDS $!"
+
+echo "Starting Aster Foods Web Server on http://0.0.0.0:8766..."
+"$PY_CMD" -m uvicorn aster_live.server:app --host 0.0.0.0 --port 8766 --no-access-log
+

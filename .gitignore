@@ -9,3 +9,6 @@ runs/
 .DS_Store
 .vscode/
 .idea/
+tunnel.log
+tunnel_url.txt
+
