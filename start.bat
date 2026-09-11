@@ -50,6 +50,13 @@ if %ERRORLEVEL% neq 0 (
     )
 )
 
-:: 4. Launch the application
+:: 4. Launch the application and open browser
 echo Starting Aster Foods server on http://127.0.0.1:8766 ...
+start "" "http://127.0.0.1:8766"
 "%PY_CMD%" -m uvicorn aster_live.server:app --host 127.0.0.1 --port 8766 --no-access-log
+
+if %ERRORLEVEL% neq 0 (
+    echo.
+    echo [Server stopped with an error]
+    pause
+)
