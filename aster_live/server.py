@@ -65,7 +65,17 @@ class Mission(BaseModel):
 def safe_error(error):
     if isinstance(error, RunStopped):
         return str(error)
-    # Provider errors may embed API keys or request URLs. Keep raw exceptions out of logs/UI.
+    err_msg = str(error)
+    print(f"[ERROR] Mission execution failure: {type(error).__name__}: {err_msg}")
+    
+    if "prepayment credits are depleted" in err_msg.lower() or "depleted" in err_msg.lower():
+        return ("Billing Error: Your Google AI Studio prepayment credits are depleted. "
+                "Please add funds to your project at https://ai.studio/projects or create a key in a project with active quota.")
+    if "resource_exhausted" in err_msg.lower() or "429" in err_msg:
+        return ("Quota / Rate Limit Exceeded (429): Check your Google AI Studio quota and billing at https://ai.studio/projects.")
+    if "not_found" in err_msg.lower() or "404" in err_msg:
+        return ("Model Not Found (404): The selected GEMINI_MODEL is not available for this API key. Try gemini-3.5-flash or gemini-3.6-flash.")
+    
     return ("Execution failed. Check the Gemini key, selected model, quota and connection. "
             "Completed specialist findings remain available. No successful completion is claimed.")
 
