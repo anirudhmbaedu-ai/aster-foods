@@ -137,3 +137,17 @@ def test_api_missing_key_and_mutation_guard(monkeypatch):
     result = client.post("/api/runs", headers={"x-session-token": cfg["session_token"]},
                          json={"prompt": "Review the launch"})
     assert result.status_code == 400
+
+
+def test_openai_provider_config(monkeypatch):
+    from fastapi.testclient import TestClient
+    from aster_live import server
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-key-12345")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-4o-mini")
+    client = TestClient(server.app)
+    cfg = client.get("/api/config").json()
+    assert cfg["ready"] is True
+    assert cfg["provider"] == "openai"
+    assert cfg["model"] == "gpt-4o-mini"
+    assert "OPENAI_API_KEY" not in cfg

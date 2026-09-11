@@ -24,7 +24,34 @@ SESSION_TOKEN = secrets.token_urlsafe(32)
 
 def settings():
     return {key: os.getenv(key, "").strip() for key in
-            ("GOOGLE_API_KEY", "GEMINI_MODEL", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID")}
+            ("OPENAI_API_KEY", "OPENAI_MODEL", "GOOGLE_API_KEY", "GEMINI_MODEL", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID")}
+
+
+def get_provider_config():
+    env = settings()
+    openai_key = env.get("OPENAI_API_KEY", "")
+    google_key = env.get("GOOGLE_API_KEY", "")
+    
+    if openai_key:
+        return {
+            "provider": "openai",
+            "api_key": openai_key,
+            "model": env.get("OPENAI_MODEL") or "gpt-4o-mini",
+            "ready": True
+        }
+    if google_key:
+        return {
+            "provider": "google",
+            "api_key": google_key,
+            "model": env.get("GEMINI_MODEL") or "gemini-2.5-flash",
+            "ready": True
+        }
+    return {
+        "provider": "openai",
+        "api_key": "",
+        "model": env.get("OPENAI_MODEL") or "gpt-4o-mini",
+        "ready": False
+    }
 
 
 @app.middleware("http")
@@ -50,9 +77,12 @@ def index():
 @app.get("/api/config")
 def config():
     env = settings()
-    return {"gemini_ready": bool(env["GOOGLE_API_KEY"]),
+    active = get_provider_config()
+    return {"gemini_ready": active["ready"],
+            "ready": active["ready"],
+            "provider": active["provider"],
             "telegram_ready": bool(env["TELEGRAM_BOT_TOKEN"] and env["TELEGRAM_CHAT_ID"]),
-            "model": env["GEMINI_MODEL"] or "gemini-2.5-flash",
+            "model": active["model"],
             "session_token": SESSION_TOKEN}
 
 
@@ -67,24 +97,30 @@ def safe_error(error):
         return str(error)
     err_msg = str(error)
     print(f"[ERROR] Mission execution failure: {type(error).__name__}: {err_msg}")
+    err_lower = err_msg.lower()
     
-    if "prepayment credits are depleted" in err_msg.lower() or "depleted" in err_msg.lower():
+    if "invalid_api_key" in err_lower or "incorrect api key" in err_lower or "authentication" in err_lower:
+        return "Authentication Error: Invalid API key. Please check your OPENAI_API_KEY in .env and restart."
+    if "insufficient_quota" in err_lower:
+        return "Billing Error: Your OpenAI account has exceeded its current quota or lacks credits. Check https://platform.openai.com/account/billing."
+    if "prepayment credits are depleted" in err_lower or "depleted" in err_lower:
         return ("Billing Error: Your Google AI Studio prepayment credits are depleted. "
                 "Please add funds to your project at https://ai.studio/projects or create a key in a project with active quota.")
-    if "resource_exhausted" in err_msg.lower() or "429" in err_msg:
-        return ("Quota / Rate Limit Exceeded (429): Check your Google AI Studio quota and billing at https://ai.studio/projects.")
-    if "not_found" in err_msg.lower() or "404" in err_msg:
-        return ("Model Not Found (404): The selected GEMINI_MODEL is not available for this API key. Try gemini-3.5-flash or gemini-3.6-flash.")
+    if "resource_exhausted" in err_lower or "rate_limit" in err_lower or "429" in err_msg:
+        return "Quota / Rate Limit Exceeded (429): Check your account quota and billing limits."
+    if "not_found" in err_lower or "model_not_found" in err_lower or "404" in err_msg:
+        return "Model Not Found (404): The selected model is not available for this API key. Try gpt-4o-mini."
     
-    return ("Execution failed. Check the Gemini key, selected model, quota and connection. "
+    return ("Execution failed. Check the API key, selected model, quota and connection. "
             "Completed specialist findings remain available. No successful completion is claimed.")
 
 
 @app.post("/api/runs")
 def start(body: Mission):
     env = settings()
-    if not env["GOOGLE_API_KEY"]:
-        raise HTTPException(400, "Add GOOGLE_API_KEY to .env and restart the server.")
+    active = get_provider_config()
+    if not active["ready"]:
+        raise HTTPException(400, "Add OPENAI_API_KEY (or GOOGLE_API_KEY) to .env and restart the server.")
     if body.telegram and not (env["TELEGRAM_BOT_TOKEN"] and env["TELEGRAM_CHAT_ID"]):
         raise HTTPException(400, "Configure Telegram in .env or turn off Telegram for this run.")
     with RUN_LOCK:
@@ -98,8 +134,8 @@ def start(body: Mission):
 
     def work():
         try:
-            team = Team(ROOT, log, env["GOOGLE_API_KEY"], env["GEMINI_MODEL"] or "gemini-2.5-flash",
-                        limit=body.delegation_limit)
+            team = Team(ROOT, log, active["api_key"], active["model"],
+                        limit=body.delegation_limit, provider=active["provider"])
             run["team"] = team
             if run["cancel"].is_set():
                 team.stop.set()

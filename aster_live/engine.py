@@ -7,6 +7,7 @@ from typing import Literal
 from langchain.agents import create_agent
 from langchain.tools import tool
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 
 SPECIALISTS = ("LEDGER", "ATLAS", "PULSE", "PRISM", "NOVA")
 
@@ -24,14 +25,21 @@ class RunStopped(Exception):
 
 
 class Team:
-    def __init__(self, root, events, api_key, model_name, limit=10, model_factory=None):
+    def __init__(self, root, events, api_key, model_name, limit=10, model_factory=None, provider="openai"):
         self.root, self.events, self.limit = Path(root), events, limit
         self.stop = threading.Event()
         self.lock = threading.Lock()
         self.board, self.calls = {}, 0
-        factory = model_factory or (lambda name: ChatGoogleGenerativeAI(
-            model=model_name, google_api_key=api_key, vertexai=False,
-            temperature=0.3, max_output_tokens=1800, timeout=60, max_retries=1))
+        if model_factory:
+            factory = model_factory
+        elif provider == "google" or (api_key and not api_key.startswith("sk-") and "gemini" in (model_name or "").lower()):
+            factory = lambda name: ChatGoogleGenerativeAI(
+                model=model_name or "gemini-2.5-flash", google_api_key=api_key, vertexai=False,
+                temperature=0.3, max_output_tokens=1800, timeout=60, max_retries=1)
+        else:
+            factory = lambda name: ChatOpenAI(
+                model=model_name or "gpt-4o-mini", api_key=api_key,
+                temperature=0.3, max_tokens=1800, timeout=60, max_retries=1)
         self.workers = {}
         for name in SPECIALISTS:
             persona = (self.root / "agents" / f"{name}.md").read_text()
